@@ -7,8 +7,8 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
+import { Type } from 'class-transformer';
 import { CreateDetalleCompraDto } from './create-detalle-compra.dto';
 
 export class CreateCompraDto {
@@ -19,10 +19,6 @@ export class CreateCompraDto {
   @IsInt()
   @Min(1)
   id_sucursal: number;
-
-  @IsInt()
-  @Min(1)
-  id_usuario: number;
 
   @IsOptional()
   @IsString()
