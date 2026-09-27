@@ -14,7 +14,7 @@ import { Usuario } from '../../../usuarios/entities/usuario.entity/usuario.entit
 @Entity('compras')
 export class Compra {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
-  id_compra: number;
+  id_compra!: number;
 
   @Column({ type: 'int', unsigned: true })
   id_proveedor: number;
@@ -35,7 +35,7 @@ export class Compra {
 
   @ManyToOne(() => Usuario)
   @JoinColumn({ name: 'id_usuario' })
-  usuario: Usuario;
+  usuario!: Usuario;
 
   @Column({
     type: 'decimal',

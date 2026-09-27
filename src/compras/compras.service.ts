@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -15,8 +16,9 @@ import { Usuario } from '../usuarios/entities/usuario.entity/usuario.entity';
 import { Producto } from '../productos/entities/producto.entity/producto.entity';
 import { Inventario } from '../inventarios/entities/inventario.entity/inventario.entity';
 import { MovimientoInventario } from '../movimientos-inventario/entities/movimiento-inventario.entity/movimiento-inventario.entity';
-
+import { UsuarioSucursal } from '../usuario-sucursal/entities/usuario-sucursal.entity/usuario-sucursal.entity';
 import { CreateCompraDto } from './dto/create-compra.dto';
+import { UsuarioRol } from '../usuario-rol/entities/usuario-rol.entity/usuario-rol.entity';
 
 import { AuditoriasService } from '../auditorias/auditorias.service';
 
@@ -49,34 +51,133 @@ export class ComprasService {
 
     private readonly dataSource: DataSource,
     private readonly auditoriasService: AuditoriasService,
+
+    @InjectRepository(UsuarioSucursal)
+    private readonly usuarioSucursalRepository: Repository<UsuarioSucursal>,
+
+    @InjectRepository(UsuarioRol)
+    private readonly usuarioRolRepository: Repository<UsuarioRol>,
   ) {}
 
-  async findAll(): Promise<Compra[]> {
-    return this.comprasRepository.find({
-      relations: { proveedor: true, sucursal: true, usuario: true },
-      order: {
-        id_compra: 'DESC',
+  async findAll(idUsuario: number): Promise<Compra[]> {
+    const rolesGlobales = [
+      'Administrador',
+      'Coordinador',
+      'Contador',
+      'Fiscal',
+    ];
+
+    const rolesUsuario = await this.usuarioRolRepository.find({
+      where: { id_usuario: idUsuario },
+      relations: { rol: true },
+    });
+
+    const tieneAccesoGlobal = rolesUsuario.some((usuarioRol) =>
+      rolesGlobales.includes(usuarioRol.rol.nombre),
+    );
+
+    // Usuarios con acceso global pueden consultar todas las compras
+    if (tieneAccesoGlobal) {
+      return this.comprasRepository.find({
+        relations: {
+          proveedor: true,
+          sucursal: true,
+          usuario: true,
+        },
+        order: {
+          id_compra: 'DESC',
+        },
+      });
+    }
+
+    // Usuarios operativos: solamente sucursales asignadas
+    const asignaciones = await this.usuarioSucursalRepository.find({
+      where: {
+        id_usuario: idUsuario,
       },
     });
+
+    const idsSucursales = asignaciones.map(
+      (asignacion) => asignacion.id_sucursal,
+    );
+
+    if (idsSucursales.length === 0) {
+      return [];
+    }
+
+    return this.comprasRepository
+      .createQueryBuilder('compra')
+      .leftJoinAndSelect('compra.proveedor', 'proveedor')
+      .leftJoinAndSelect('compra.sucursal', 'sucursal')
+      .leftJoinAndSelect('compra.usuario', 'usuario')
+      .where('compra.id_sucursal IN (:...idsSucursales)', {
+        idsSucursales,
+      })
+      .orderBy('compra.id_compra', 'DESC')
+      .getMany();
   }
 
-  async findOne(id: number): Promise<Compra> {
+  async findOne(id: number, idUsuario: number): Promise<Compra> {
     const compra = await this.comprasRepository.findOne({
       where: {
         id_compra: id,
       },
-      relations: { proveedor: true, sucursal: true, usuario: true },
+      relations: {
+        proveedor: true,
+        sucursal: true,
+        usuario: true,
+      },
     });
 
     if (!compra) {
       throw new NotFoundException(`La compra con ID ${id} no existe`);
     }
 
+    const rolesGlobales = [
+      'Administrador',
+      'Coordinador',
+      'Contador',
+      'Fiscal',
+    ];
+
+    const rolesUsuario = await this.usuarioRolRepository.find({
+      where: {
+        id_usuario: idUsuario,
+      },
+      relations: {
+        rol: true,
+      },
+    });
+
+    const tieneAccesoGlobal = rolesUsuario.some((usuarioRol) =>
+      rolesGlobales.includes(usuarioRol.rol.nombre),
+    );
+
+    if (tieneAccesoGlobal) {
+      return compra;
+    }
+
+    const accesoSucursal = await this.usuarioSucursalRepository.findOne({
+      where: {
+        id_usuario: idUsuario,
+        id_sucursal: compra.id_sucursal,
+      },
+    });
+
+    if (!accesoSucursal) {
+      throw new ForbiddenException(
+        'El usuario no tiene acceso a la sucursal de esta compra',
+      );
+    }
+
     return compra;
   }
 
-  async create(createCompraDto: CreateCompraDto): Promise<Compra> {
-    const { id_proveedor, id_sucursal, id_usuario, observaciones, detalles } =
+  async create(
+    createCompraDto: CreateCompraDto,
+    idUsuario: number,
+  ): Promise<Compra> {
+    const { id_proveedor, id_sucursal, observaciones, detalles } =
       createCompraDto;
 
     if (!detalles || detalles.length === 0) {
@@ -104,13 +205,24 @@ export class ComprasService {
     }
 
     const usuario = await this.usuariosRepository.findOne({
-      where: { id_usuario },
+      where: { id_usuario: idUsuario },
     });
 
     if (!usuario) {
-      throw new NotFoundException(`El usuario con ID ${id_usuario} no existe`);
+      throw new NotFoundException(`El usuario con ID ${idUsuario} no existe`);
     }
+    const accesoSucursal = await this.usuarioSucursalRepository.findOne({
+      where: {
+        id_usuario: idUsuario,
+        id_sucursal,
+      },
+    });
 
+    if (!accesoSucursal) {
+      throw new ForbiddenException(
+        'El usuario no tiene acceso a la sucursal indicada',
+      );
+    }
     const productos = new Map<number, Producto>();
 
     for (const detalle of detalles) {
@@ -147,7 +259,7 @@ export class ComprasService {
       const compra = manager.create(Compra, {
         id_proveedor,
         id_sucursal,
-        id_usuario,
+        id_usuario: idUsuario,
         total,
         estado: 'REGISTRADA',
         observaciones: observaciones ?? null,
@@ -173,20 +285,62 @@ export class ComprasService {
         await manager.save(DetalleCompra, detalle);
       }
 
+      await this.auditoriasService.registrar(manager, {
+        id_usuario: idUsuario,
+        id_sucursal,
+        accion: 'REGISTRAR',
+        entidad: 'COMPRA',
+        id_registro: String(compraGuardada.id_compra),
+        datos_nuevos: {
+          id_proveedor,
+          id_sucursal,
+          total,
+          estado: 'REGISTRADA',
+        },
+        observacion: 'Compra registrada',
+      });
+
       return compraGuardada;
     });
   }
 
-  async confirmar(id: number): Promise<Compra> {
+  async confirmar(id: number, idUsuario: number): Promise<Compra> {
     return this.dataSource.transaction(async (manager) => {
       const compra = await manager.findOne(Compra, {
         where: {
           id_compra: id,
         },
+        lock: {
+          mode: 'pessimistic_write',
+        },
       });
 
       if (!compra) {
         throw new NotFoundException(`La compra con ID ${id} no existe`);
+      }
+
+      const rolesGlobales = ['Administrador', 'Coordinador'];
+      const rolesUsuario = await this.usuarioRolRepository.find({
+        where: { id_usuario: idUsuario },
+        relations: { rol: true },
+      });
+      const tieneAccesoGlobal = rolesUsuario.some((usuarioRol) =>
+        rolesGlobales.includes(usuarioRol.rol.nombre),
+      );
+
+      if (!tieneAccesoGlobal) {
+        const accesoSucursal = await this.usuarioSucursalRepository.findOne({
+          where: {
+            id_usuario: idUsuario,
+            id_sucursal: compra.id_sucursal,
+          },
+        });
+
+        if (!accesoSucursal) {
+          throw new ForbiddenException(
+            'El usuario no tiene acceso a la sucursal de esta compra',
+          );
+        }
       }
 
       if (compra.estado !== 'REGISTRADA') {
@@ -211,6 +365,9 @@ export class ComprasService {
             id_producto: detalle.id_producto,
             id_sucursal: compra.id_sucursal,
           },
+          lock: {
+            mode: 'pessimistic_write',
+          },
         });
 
         if (!inventario) {
@@ -232,7 +389,7 @@ export class ComprasService {
         const movimiento = manager.create(MovimientoInventario, {
           id_producto: detalle.id_producto,
           id_sucursal: compra.id_sucursal,
-          id_usuario: compra.id_usuario,
+          id_usuario: idUsuario,
           tipo_movimiento: 'COMPRA',
           cantidad: detalle.cantidad,
           cantidad_anterior: cantidadAnterior,
@@ -246,7 +403,7 @@ export class ComprasService {
       await manager.save(Compra, compra);
 
       await this.auditoriasService.registrar(manager, {
-        id_usuario: compra.id_usuario,
+        id_usuario: idUsuario,
         id_sucursal: compra.id_sucursal,
         accion: 'CONFIRMAR',
         entidad: 'compras',
@@ -259,44 +416,6 @@ export class ComprasService {
           total: compra.total,
         },
         observacion: `Compra ${compra.id_compra} confirmada y entrada de inventario registrada`,
-      });
-
-      return compra;
-    });
-  }
-
-  async anular(id: number): Promise<Compra> {
-    return this.dataSource.transaction(async (manager) => {
-      const compra = await manager.findOne(Compra, {
-        where: { id_compra: id },
-      });
-
-      if (!compra) {
-        throw new NotFoundException(`La compra con ID ${id} no existe`);
-      }
-
-      if (compra.estado !== 'REGISTRADA') {
-        throw new BadRequestException(
-          `La compra ${id} no se puede anular porque está en estado ${compra.estado}`,
-        );
-      }
-
-      compra.estado = 'ANULADA';
-      await manager.save(Compra, compra);
-
-      await this.auditoriasService.registrar(manager, {
-        id_usuario: compra.id_usuario,
-        id_sucursal: compra.id_sucursal,
-        accion: 'ANULAR',
-        entidad: 'compras',
-        id_registro: String(compra.id_compra),
-        datos_anteriores: {
-          estado: 'REGISTRADA',
-        },
-        datos_nuevos: {
-          estado: 'ANULADA',
-        },
-        observacion: `Compra ${compra.id_compra} anulada`,
       });
 
       return compra;
