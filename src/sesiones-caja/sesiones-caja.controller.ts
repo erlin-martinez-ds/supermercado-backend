@@ -1,4 +1,10 @@
 import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
   Body,
   Controller,
   Get,
@@ -17,10 +23,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 
+@ApiTags('sesiones-caja')
 @Controller('sesiones-caja')
 export class SesionesCajaController {
   constructor(private readonly sesionesCajaService: SesionesCajaService) {}
 
+  @ApiOperation({ summary: 'Listar sesiones-caja' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
@@ -34,6 +44,9 @@ export class SesionesCajaController {
   findAll(@Request() req: any) {
     return this.sesionesCajaService.findAll(Number(req.user.id_usuario));
   }
+  @ApiOperation({ summary: 'Consultar sesiones caja' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Get('caja/:idCaja/abierta')
   @UseGuards(JwtAuthGuard)
   findAbiertaPorCaja(
@@ -46,12 +59,18 @@ export class SesionesCajaController {
     );
   }
 
+  @ApiOperation({ summary: 'Consultar sesiones-caja' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
     return this.sesionesCajaService.findOne(id, Number(req.user.id_usuario));
   }
 
+  @ApiOperation({ summary: 'Crear sesiones caja' })
+  @ApiResponse({ status: 201, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Post('abrir')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('Administrador', 'Coordinador', 'Encargado de sucursal', 'Cajero')
@@ -59,6 +78,9 @@ export class SesionesCajaController {
     return this.sesionesCajaService.abrir(dto, Number(req.user.id_usuario));
   }
 
+  @ApiOperation({ summary: 'Actualizar sesiones caja' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Patch(':id/cerrar')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('Administrador', 'Coordinador', 'Encargado de sucursal', 'Cajero')

@@ -28,6 +28,7 @@ import { AuditoriasService } from '../auditorias/auditorias.service';
 import { Impuesto } from '../impuestos/entities/impuesto.entity/impuesto.entity';
 import { FacturasService } from '../facturas/facturas.service';
 import { SesionCaja } from '../sesiones-caja/entities/sesion-caja.entity/sesion-caja.entity';
+import { UsuarioRol } from '../usuario-rol/entities/usuario-rol.entity/usuario-rol.entity';
 
 type DetalleVentaCalculado = {
   id_producto: number;
@@ -86,18 +87,98 @@ export class VentasService {
 
     @InjectRepository(SesionCaja)
     private readonly sesionCajaRepository: Repository<SesionCaja>,
-  ) {}
 
-  async findAll() {
-    return this.ventaRepository.find({
-      relations: { sucursal: true, usuario: true },
-      order: {
-        id_venta: 'DESC',
+    @InjectRepository(UsuarioRol)
+    private readonly usuarioRolRepository: Repository<UsuarioRol>,
+  ) {}
+  private async usuarioTieneAccesoSucursal(
+    idUsuario: number,
+    idSucursal: number,
+  ): Promise<boolean> {
+    const usuarioRoles = await this.usuarioRolRepository.find({
+      where: { id_usuario: idUsuario },
+      relations: { rol: true },
+    });
+
+    const nombresRoles = usuarioRoles.map(
+      (usuarioRol) => usuarioRol.rol.nombre,
+    );
+
+    const tieneAccesoGlobal = [
+      'Administrador',
+      'Coordinador',
+      'Contador',
+      'Fiscal',
+    ].some((rol) => nombresRoles.includes(rol));
+
+    if (tieneAccesoGlobal) {
+      return true;
+    }
+
+    const asignacion = await this.usuarioSucursalRepository.findOne({
+      where: {
+        id_usuario: idUsuario,
+        id_sucursal: idSucursal,
       },
     });
+
+    return !!asignacion;
+  }
+  async findAll(idUsuario: number): Promise<Venta[]> {
+    const usuarioRoles = await this.usuarioRolRepository.find({
+      where: { id_usuario: idUsuario },
+      relations: { rol: true },
+    });
+
+    const nombresRoles = usuarioRoles.map(
+      (usuarioRol) => usuarioRol.rol.nombre,
+    );
+
+    const tieneAccesoGlobal = [
+      'Administrador',
+      'Coordinador',
+      'Contador',
+      'Fiscal',
+    ].some((rol) => nombresRoles.includes(rol));
+
+    if (tieneAccesoGlobal) {
+      return this.ventaRepository.find({
+        relations: {
+          sucursal: true,
+          usuario: true,
+        },
+        order: {
+          id_venta: 'DESC',
+        },
+      });
+    }
+
+    const asignaciones = await this.usuarioSucursalRepository.find({
+      where: {
+        id_usuario: idUsuario,
+      },
+    });
+
+    const idsSucursales = asignaciones.map(
+      (asignacion) => asignacion.id_sucursal,
+    );
+
+    if (idsSucursales.length === 0) {
+      return [];
+    }
+
+    return this.ventaRepository
+      .createQueryBuilder('venta')
+      .leftJoinAndSelect('venta.sucursal', 'sucursal')
+      .leftJoinAndSelect('venta.usuario', 'usuario')
+      .where('venta.id_sucursal IN (:...idsSucursales)', {
+        idsSucursales,
+      })
+      .orderBy('venta.id_venta', 'DESC')
+      .getMany();
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, idUsuario: number) {
     const venta = await this.ventaRepository.findOne({
       where: {
         id_venta: id,
@@ -109,6 +190,16 @@ export class VentasService {
       throw new NotFoundException(`No se encontró la venta ${id}`);
     }
 
+    const tieneAcceso = await this.usuarioTieneAccesoSucursal(
+      idUsuario,
+      venta.id_sucursal,
+    );
+
+    if (!tieneAcceso) {
+      throw new ForbiddenException(
+        'No tiene acceso a las ventas de esta sucursal',
+      );
+    }
     const detalles = await this.detalleVentaRepository.find({
       where: {
         id_venta: id,
@@ -464,7 +555,7 @@ export class VentasService {
     });
   }
 
-  async anular(id: number) {
+  async anular(id: number, idUsuario: number) {
     return this.dataSource.transaction(async (manager) => {
       const venta = await manager.findOne(Venta, {
         where: {
@@ -479,69 +570,21 @@ export class VentasService {
       if (venta.estado === 'ANULADA') {
         throw new BadRequestException('La venta ya se encuentra anulada');
       }
+      const tieneAcceso = await this.usuarioTieneAccesoSucursal(
+        idUsuario,
+        venta.id_sucursal,
+      );
 
-      const detalles = await manager.find(DetalleVenta, {
-        where: {
-          id_venta: id,
-        },
-      });
-
-      for (const detalle of detalles) {
-        const inventario = await manager.findOne(Inventario, {
-          where: {
-            id_producto: detalle.id_producto,
-            id_sucursal: venta.id_sucursal,
-          },
-        });
-
-        if (!inventario) {
-          throw new NotFoundException(
-            `No existe inventario para el producto ${detalle.id_producto}`,
-          );
-        }
-
-        const stockAnterior = Number(inventario.cantidad);
-
-        const stockNuevo = Number(
-          (stockAnterior + Number(detalle.cantidad)).toFixed(3),
+      if (!tieneAcceso) {
+        throw new ForbiddenException(
+          'No tiene autorización para anular ventas de esta sucursal',
         );
-
-        inventario.cantidad = stockNuevo;
-
-        await manager.save(Inventario, inventario);
-
-        const movimiento = manager.create(MovimientoInventario, {
-          id_producto: detalle.id_producto,
-          id_sucursal: venta.id_sucursal,
-          id_usuario: venta.id_usuario,
-          tipo_movimiento: 'AJUSTE_ENTRADA',
-          cantidad: Number(detalle.cantidad),
-          cantidad_anterior: stockAnterior,
-          cantidad_nueva: stockNuevo,
-          observacion: `Anulación de venta ${id}`,
-        });
-
-        await manager.save(MovimientoInventario, movimiento);
       }
-
-      venta.estado = 'ANULADA';
-
-      await manager.save(Venta, venta);
-      await this.facturasService.anularDesdeVenta(manager, venta.id_venta);
-      await this.auditoriasService.registrar(manager, {
-        id_usuario: venta.id_usuario,
-        id_sucursal: venta.id_sucursal,
-        accion: 'ANULAR',
-        entidad: 'ventas',
-        id_registro: String(venta.id_venta),
-        datos_anteriores: {
-          estado: 'CONFIRMADA',
-        },
-        datos_nuevos: {
-          estado: 'ANULADA',
-        },
-        observacion: `Venta ${venta.id_venta} anulada y stock restaurado`,
-      });
+      await this.facturasService.anularDesdeVenta(
+        manager,
+        venta.id_venta,
+        idUsuario,
+      );
 
       return this.findOneWithManager(manager, id);
     });

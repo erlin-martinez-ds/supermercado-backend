@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsInt,
@@ -17,26 +18,31 @@ import { CreatePagoVentaDto } from './create-pago-venta.dto';
 export class CreateVentaDto {
   @IsInt()
   @Min(1)
+  @ApiProperty()
   id_sucursal: number;
 
   @IsInt()
   @Min(1)
+  @ApiProperty()
   id_sesion_caja: number;
-  
+
   @IsOptional()
   @IsString()
   @MaxLength(255)
+  @ApiPropertyOptional()
   observaciones?: string;
 
   @IsNotEmpty()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateDetalleVentaDto)
+  @ApiProperty({ type: () => CreateDetalleVentaDto, isArray: true })
   detalles: CreateDetalleVentaDto[];
 
   @IsNotEmpty()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePagoVentaDto)
+  @ApiProperty({ type: () => CreatePagoVentaDto, isArray: true })
   pagos: CreatePagoVentaDto[];
 }

@@ -26,9 +26,10 @@ import { ImpuestosModule } from './impuestos/impuestos.module';
 import { FacturasModule } from './facturas/facturas.module';
 import { CajasModule } from './cajas/cajas.module';
 import { SesionesCajaModule } from './sesiones-caja/sesiones-caja.module';
-
+import { ScheduleModule } from '@nestjs/schedule';
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -46,7 +47,7 @@ import { SesionesCajaModule } from './sesiones-caja/sesiones-caja.module';
         database: configService.get<string>('DB_DATABASE'),
 
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: false,
       }),
     }),
 

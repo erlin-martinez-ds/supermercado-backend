@@ -1,4 +1,10 @@
 import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
   Body,
   Controller,
   Get,
@@ -22,10 +28,14 @@ interface AuthenticatedRequest extends ExpressRequest {
   };
 }
 
+@ApiTags('compras')
 @Controller('compras')
 export class ComprasController {
   constructor(private readonly comprasService: ComprasService) {}
 
+  @ApiOperation({ summary: 'Listar compras' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
@@ -39,6 +49,9 @@ export class ComprasController {
     return this.comprasService.findAll(Number(req.user.id_usuario));
   }
 
+  @ApiOperation({ summary: 'Consultar compras' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('Administrador', 'Coordinador', 'Encargado de sucursal')
@@ -49,6 +62,9 @@ export class ComprasController {
     return this.comprasService.findOne(id, Number(req.user.id_usuario));
   }
 
+  @ApiOperation({ summary: 'Crear registro en compras' })
+  @ApiResponse({ status: 201, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('Administrador', 'Coordinador', 'Encargado de sucursal')
@@ -62,6 +78,9 @@ export class ComprasController {
     );
   }
 
+  @ApiOperation({ summary: 'Confirmar compras' })
+  @ApiResponse({ status: 200, description: 'Respuesta exitosa' })
+  @ApiBearerAuth()
   @Patch(':id/confirmar')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('Administrador', 'Coordinador', 'Encargado de sucursal')

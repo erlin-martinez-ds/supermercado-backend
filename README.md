@@ -44,6 +44,13 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## API documentation and testing
+
+With the API running, open [http://localhost:3000/api](http://localhost:3000/api)
+to explore and try the endpoints through Swagger UI. For protected endpoints,
+call `POST /auth/login`, copy the `access_token` from the response, and use the
+**Authorize** button in Swagger UI to authenticate.
+
 ## Run tests
 
 ```bash
