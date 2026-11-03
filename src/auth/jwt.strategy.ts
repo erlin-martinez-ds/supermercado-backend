@@ -5,9 +5,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(
-    private readonly configService: ConfigService,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
 
@@ -17,10 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: {
-    sub: string;
-    email: string;
-  }) {
+  async validate(payload: { sub: string; email: string }) {
     if (!payload?.sub || !payload?.email) {
       throw new UnauthorizedException('Token inválido');
     }

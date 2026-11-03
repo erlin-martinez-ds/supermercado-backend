@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsIn,
   IsInt,
@@ -11,50 +12,26 @@ import {
 export class CreateMovimientoInventarioDto {
   @IsInt()
   @Min(1)
+  @ApiProperty()
   id_producto: number;
 
   @IsInt()
   @Min(1)
+  @ApiProperty()
   id_sucursal: number;
 
-  @IsInt()
-  @Min(1)
-  id_usuario: number;
-
-  @IsIn([
-    'COMPRA',
-    'VENTA',
-    'AJUSTE_ENTRADA',
-    'AJUSTE_SALIDA',
-    'DEVOLUCION_CLIENTE',
-    'DEVOLUCION_PROVEEDOR',
-    'TRANSFERENCIA_SALIDA',
-    'TRANSFERENCIA_ENTRADA',
-  ])
-  tipo_movimiento:
-    | 'COMPRA'
-    | 'VENTA'
-    | 'AJUSTE_ENTRADA'
-    | 'AJUSTE_SALIDA'
-    | 'DEVOLUCION_CLIENTE'
-    | 'DEVOLUCION_PROVEEDOR'
-    | 'TRANSFERENCIA_SALIDA'
-    | 'TRANSFERENCIA_ENTRADA';
+  @IsIn(['AJUSTE_ENTRADA', 'AJUSTE_SALIDA'])
+  @ApiProperty()
+  tipo_movimiento: 'AJUSTE_ENTRADA' | 'AJUSTE_SALIDA';
 
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
+  @ApiProperty()
   cantidad: number;
-
-  @IsNumber({ maxDecimalPlaces: 3 })
-  @Min(0)
-  cantidad_anterior: number;
-
-  @IsNumber({ maxDecimalPlaces: 3 })
-  @Min(0)
-  cantidad_nueva: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(255)
+  @ApiPropertyOptional()
   observacion?: string;
 }

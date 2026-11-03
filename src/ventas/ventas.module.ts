@@ -18,7 +18,7 @@ import { AuditoriasModule } from '../auditorias/auditorias.module';
 import { Impuesto } from '../impuestos/entities/impuesto.entity/impuesto.entity';
 import { FacturasModule } from '../facturas/facturas.module';
 import { SesionCaja } from '../sesiones-caja/entities/sesion-caja.entity/sesion-caja.entity';
-
+import { UsuarioRol } from '../usuario-rol/entities/usuario-rol.entity/usuario-rol.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -34,6 +34,7 @@ import { SesionCaja } from '../sesiones-caja/entities/sesion-caja.entity/sesion-
       MetodoPago,
       Impuesto,
       SesionCaja,
+      UsuarioRol,
     ]),
     AuditoriasModule,
     FacturasModule,
